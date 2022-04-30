@@ -51,8 +51,8 @@ async function run(): Promise<void> {
     const wb = xlsx.utils.book_new()
     const ws = xlsx.utils.aoa_to_sheet(org_issues)
     const ws2 = xlsx.utils.aoa_to_sheet(job_errors)
-    xlsx.utils.book_append_sheet(wb, ws, 'Sheet1')
-    xlsx.utils.book_append_sheet(wb, ws2, 'Sheet2')
+    xlsx.utils.book_append_sheet(wb, ws, 'code-scanning-alerts')
+    xlsx.utils.book_append_sheet(wb, ws2, 'errors')
     xlsx.writeFile(wb, `${dsp_org}-security-alerts.xlsx`)
   } catch (error) {
     console.error(error)
@@ -68,6 +68,8 @@ async function getRepoAlerts(
   org_issues: string[][],
   job_errors: string[][]
 ): Promise<void> {
+  let error_flag = 'successfully processed'
+  let error_message = ''
   try {
     const alerts = await octokit.paginate(
       octokit.rest.codeScanning.listAlertsForRepo,
@@ -117,12 +119,13 @@ async function getRepoAlerts(
       }
     }
   } catch (error) {
-    let message = 'unknown error'
+    error_flag = 'processing Failed for'
+    error_message = 'unknown error'
     if (error instanceof Error) {
-      message = error.message
+      error_message = error.message
     }
-    job_errors.push([`error getting alerts for ${login}/${reponame}`, message])
+    job_errors.push(['code-scanning-alerts',`${login}/${reponame}`, error_message])
   } finally {
-    console.log(`processed...${login}/${reponame}`)
+    console.log(`${error_flag} ${login}/${reponame}`)
   }
 }
