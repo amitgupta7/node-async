@@ -6,7 +6,18 @@ import * as xlsx from 'xlsx'
 async function run(): Promise<void> {
   try {
     // get advance security billing api from github
-    const dsp_org = 'octodemo'
+    
+    let dsp_org = ''
+    if(process.env.GITHUB_ORG)
+    {
+      //set dsp_org from enviornment variable
+      dsp_org = process.env.GITHUB_ORG
+    }
+    else{
+      throw new Error("plese set GITHUB_ORG environment variable")
+    }
+    
+
     const token = process.env.INPUT_TOKEN
     const octokit = new Octokit({
       auth: token
