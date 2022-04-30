@@ -1,4 +1,5 @@
 import {Octokit} from '@octokit/rest'
+import {graphql} from '@octokit/graphql'
 import * as xlsx from 'xlsx'
 
 // import { graphql } from "@octokit/graphql"; //import to call graphql api
@@ -6,19 +7,21 @@ import * as xlsx from 'xlsx'
 async function run(): Promise<void> {
   try {
     // get advance security billing api from github
-    
+
     let dsp_org = ''
-    if(process.env.GITHUB_ORG)
-    {
+    if (process.env.GITHUB_ORG) {
       //set dsp_org from enviornment variable
       dsp_org = process.env.GITHUB_ORG
+    } else {
+      throw new Error('plese set GITHUB_ORG environment variable')
     }
-    else{
-      throw new Error("plese set GITHUB_ORG environment variable")
-    }
-    
 
-    const token = process.env.INPUT_TOKEN
+    let token = ''
+    if (process.env.INPUT_TOKEN) {
+      token = process.env.INPUT_TOKEN
+    } else {
+      throw new Error('plese set INPUT_TOKEN environment variable')
+    }
     const octokit = new Octokit({
       auth: token
     })
@@ -34,13 +37,43 @@ async function run(): Promise<void> {
     )
 
     const promises = []
-    const org_issues: string[][] = []
+    const codescanningAlerts: string[][] = []
     const job_errors: string[][] = []
     job_errors.push(['error_type', 'repo', 'error_message'])
-    org_issues.push(['org', 'repo', 'tool_name', 'tool_version', 
-    'alert_number', 'alert_url', 'alert_state', 'rule_id', 
-    'cwe', 'security_severity', 'path', 'start_line', 'end_line', 
-    'created_at', 'updated_at', 'fixed_at', 'dismissed_at', 'dismissed_by'])
+    codescanningAlerts.push([
+      'org',
+      'repo',
+      'tool_name',
+      'tool_version',
+      'alert_number',
+      'alert_url',
+      'alert_state',
+      'rule_id',
+      'cwe',
+      'security_severity',
+      'path',
+      'start_line',
+      'end_line',
+      'created_at',
+      'updated_at',
+      'fixed_at',
+      'dismissed_at',
+      'dismissed_by'
+    ])
+
+    const dependabotAlerts: string[][] = []
+    const dependabotHeader: string[] = [
+      'org',
+      'repo',
+      'ghsaId',
+      'packageName',
+      'packageManager',
+      'severity',
+      'firstPatchedVersion',
+      'description'
+    ]
+
+    dependabotAlerts.push(dependabotHeader)
 
     console.log(`${dsp_org} has ${repocount} repos`)
     for (const repo of repos) {
@@ -48,15 +81,32 @@ async function run(): Promise<void> {
       const login = repo.full_name.split('/')[0]
       const reponame = repo.full_name.split('/')[1]
       promises.push(
-        await getRepoAlerts(octokit, login, reponame, org_issues, job_errors)
+        await getRepoAlerts(
+          octokit,
+          login,
+          reponame,
+          codescanningAlerts,
+          job_errors
+        )
+      )
+      promises.push(
+        await getDependabotReport(
+          login,
+          reponame,
+          dependabotAlerts,
+          job_errors,
+          token
+        )
       )
     }
 
     await Promise.allSettled(promises)
     const wb = xlsx.utils.book_new()
-    const ws = xlsx.utils.aoa_to_sheet(org_issues)
+    const ws = xlsx.utils.aoa_to_sheet(codescanningAlerts)
+    const ws1 = xlsx.utils.aoa_to_sheet(dependabotAlerts)
     const ws2 = xlsx.utils.aoa_to_sheet(job_errors)
     xlsx.utils.book_append_sheet(wb, ws, 'code-scanning-alerts')
+    xlsx.utils.book_append_sheet(wb, ws1, 'dependabot-alerts')
     xlsx.utils.book_append_sheet(wb, ws2, 'errors')
     xlsx.writeFile(wb, `${dsp_org}-security-alerts.xlsx`)
   } catch (error) {
@@ -129,8 +179,116 @@ async function getRepoAlerts(
     if (error instanceof Error) {
       error_message = error.message
     }
-    job_errors.push(['code-scanning-alerts',`${login}/${reponame}`, error_message])
+    job_errors.push([
+      'code-scanning-alerts',
+      `${login}/${reponame}`,
+      error_message
+    ])
   } finally {
     console.log(`${error_flag} ${login}/${reponame}`)
   }
+}
+
+async function getDependabotReport(
+  login: string,
+  reponame: string,
+  csvData: string[][],
+  job_errors: string[][],
+  token: string
+): Promise<void> {
+  let error_flag = 'successfully processed'
+  let error_message = ''
+  try {
+    //get the dependency graph for the repo and parse the data
+    let response
+    let after = ''
+    do {
+      response = await fetchAPIResults(login, reponame, after, token)
+      after = response.repository.vulnerabilityAlerts.pageInfo.endCursor
+      for (const dependency of response.repository.vulnerabilityAlerts.nodes) {
+        let version = 'na'
+        if (dependency.securityVulnerability.firstPatchedVersion != null)
+          version =
+            dependency.securityVulnerability.firstPatchedVersion.identifier
+
+        const row: string[] = [
+          login,
+          reponame,
+          dependency.securityVulnerability.advisory.ghsaId,
+          dependency.securityVulnerability.package.name,
+          dependency.securityVulnerability.package.ecosystem,
+          dependency.securityVulnerability.advisory.severity,
+          version,
+          dependency.securityVulnerability.advisory.description
+        ]
+
+        csvData.push(row)
+      }
+    } while (response.repository.vulnerabilityAlerts.pageInfo.hasNextPage)
+  } catch (error) {
+    error_flag = 'processing Failed for'
+    error_message = 'unknown error'
+    if (error instanceof Error) {
+      error_message = error.message
+    }
+    job_errors.push([
+      'dependabot-alerts',
+      `${login}/${reponame}`,
+      error_message
+    ])
+  } finally {
+    console.log(`${error_flag} ${login}/${reponame}`)
+  }
+}
+async function fetchAPIResults(
+  login: string,
+  repoName: string,
+  after: string,
+  token: string
+): Promise<any> {
+  const response: any = await graphql(getQuery(login, repoName, after), {
+    headers: {
+      authorization: `token ${token}`,
+      accept: 'application/vnd.github.hawkgirl-preview+json'
+    }
+  })
+  return response
+}
+
+function getQuery(login: string, repoName: string, after: string): string {
+  const query = `
+      {
+        repository(owner: "${login}", name: "${repoName}") {
+          vulnerabilityAlerts(first: 100 ${
+            after ? `, after: "${after}"` : ''
+          }) {
+            nodes {
+              createdAt
+              dismissedAt
+              securityVulnerability {
+                package {
+                  name
+                  ecosystem
+                }
+                advisory {
+                  description
+                  permalink
+                  severity
+                  ghsaId
+                }
+                firstPatchedVersion {
+                  identifier
+                }
+              }
+            }
+            totalCount
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      }
+    `
+  return query
 }
