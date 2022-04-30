@@ -9,6 +9,7 @@ on:
 
 env:
   INPUT_TOKEN: ${{ secrets.TOKEN }}
+  GITHUB_ORG: dsp-testing
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
