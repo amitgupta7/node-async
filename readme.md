@@ -1,5 +1,3 @@
-Demo script to generate org level GHAS alerts using actions workflow. The example require a GitHub PAT and GitHub Org to generate an excel file with the org level details. This is unable to capture all alerts if rate limit is hit for GitHub API (5000/hr/user). All errors will be captured and written to the excel worksheet. 
-
 This code is able to 
 * Generates GHAS Org level findings in an excel 
   * code scanning alerts.
