@@ -29,7 +29,7 @@ async function run(): Promise<void> {
     let repocount = 0
     const repos = await octokit.paginate(
       octokit.repos.listForOrg,
-      {org: dsp_org, type: 'all'},
+      {org: dsp_org, type: 'all', per_page: 100},
       response => {
         repocount += response.data.length
         return response.data
