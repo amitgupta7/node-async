@@ -36,6 +36,11 @@ async function run(): Promise<void> {
     const promises = []
     const org_issues: string[][] = []
     const job_errors: string[][] = []
+    job_errors.push(['error_type', 'repo', 'error_message'])
+    org_issues.push(['org', 'repo', 'tool_name', 'tool_version', 
+    'alert_number', 'alert_url', 'alert_state', 'rule_id', 
+    'cwe', 'security_severity', 'path', 'start_line', 'end_line', 
+    'created_at', 'updated_at', 'fixed_at', 'dismissed_at', 'dismissed_by'])
 
     console.log(`${dsp_org} has ${repocount} repos`)
     for (const repo of repos) {
