@@ -88,40 +88,20 @@ async function run(): Promise<void> {
     dependabotAlerts.push(dependabotHeader)
     codescanningAlerts.push(codeScanningHeader)
 
-    promises.push(
-      await getOrgCSAlerts(
-        octokit,
-        dsp_org,
-        codescanningAlerts,
-        job_errors,
-        token
-      )
-    )
-
-    promises.push(
-      await getOrgSecretScanningAlerts(
-        octokit,
-        dsp_org,
-        secretScanningAlerts,
-        job_errors,
-        token
-      )
-    )
-
     console.log(`${dsp_org} has ${repocount} repos`)
     for (const repo of repos) {
       //console.log(`${repo.full_name}`)
       const login = repo.full_name.split('/')[0]
       const reponame = repo.full_name.split('/')[1]
-      // promises.push(
-      //   await getRepoAlerts(
-      //     octokit,
-      //     login,
-      //     reponame,
-      //     codescanningAlerts,
-      //     job_errors
-      //   )
-      // )
+      promises.push(
+        await getRepoAlerts(
+          octokit,
+          login,
+          reponame,
+          codescanningAlerts,
+          job_errors
+        )
+      )
       promises.push(
         await getDependabotReport(
           login,
@@ -132,15 +112,15 @@ async function run(): Promise<void> {
         )
       )
 
-      // promises.push(
-      //   await getSecretScanningReport(
-      //     octokit,
-      //     login,
-      //     reponame,
-      //     secretScanningAlerts,
-      //     job_errors
-      //   )
-      // )
+      promises.push(
+        await getSecretScanningReport(
+          octokit,
+          login,
+          reponame,
+          secretScanningAlerts,
+          job_errors
+        )
+      )
     }
 
     await Promise.allSettled(promises)
@@ -161,38 +141,25 @@ async function run(): Promise<void> {
 
 run()
 
-async function getOrgCSAlerts(
+async function getRepoAlerts(
   octokit: Octokit,
   login: string,
+  reponame: string,
   org_issues: string[][],
-  job_errors: string[][],
-  token: string
+  job_errors: string[][]
 ): Promise<void> {
   let error_flag = 'successfully processed (code-scanning alerts) for'
   let error_message = ''
-  let page_no = 1
   try {
-    const parse = require('parse-link-header')
-    let parsed
-    do {
-      const result = await octokit.request(
-        `GET /orgs/{org}/code-scanning/alerts`,
-        {
-          headers: {
-            authorization: `token ${token}`
-          },
-          org: login,
-          visibility: 'all',
-          sort: 'created',
-          direction: 'desc',
-          per_page: 100,
-          page: page_no
-        }
-      )
-      page_no++
-      parsed = parse(result.headers.link)
-
-      for (const alert of result.data) {
+    const alerts = await octokit.paginate(
+      octokit.rest.codeScanning.listAlertsForRepo,
+      {
+        owner: login,
+        repo: reponame
+      }
+    )
+    if (alerts.length > 0) {
+      for (const alert of alerts) {
         const rule: any = alert.rule
         let securitySeverity = ''
         let securityCwe = ''
@@ -207,10 +174,10 @@ async function getOrgCSAlerts(
           }
         }
         securityCwe = securityCwe.replace(/,\s*$/, '')
-
-        org_issues.push([
+        const _alert: any = alert
+        const row: string[] = [
           login,
-          alert.repository.name,
+          reponame,
           alert.tool.name!,
           alert.tool.version!,
           alert.number.toString(),
@@ -223,13 +190,14 @@ async function getOrgCSAlerts(
           alert.most_recent_instance.location!.start_line,
           alert.most_recent_instance.location!.end_line,
           alert.created_at,
-          alert.updated_at,
-          alert.fixed_at,
+          _alert.updated_at,
+          _alert.fixed_at,
           alert.dismissed_at,
           alert.dismissed_by
-        ])
+        ]
+        org_issues.push(row)
       }
-    } while (parsed.next)
+    }
   } catch (error) {
     error_flag = 'processing (code-scanning alerts) failed for'
     error_message = 'unknown error'
@@ -238,86 +206,13 @@ async function getOrgCSAlerts(
     }
     job_errors.push([
       'code-scanning-alerts',
-      `${login}/page:${page_no}`,
+      `${login}/${reponame}`,
       error_message
     ])
   } finally {
-    console.log(`${error_flag} ${login}/${page_no}`)
+    console.log(`${error_flag} ${login}/${reponame}`)
   }
 }
-
-// async function getRepoAlerts(
-//   octokit: Octokit,
-//   login: string,
-//   reponame: string,
-//   org_issues: string[][],
-//   job_errors: string[][]
-// ): Promise<void> {
-//   let error_flag = 'successfully processed (code-scanning alerts) for'
-//   let error_message = ''
-//   try {
-//     const alerts = await octokit.paginate(
-//       octokit.rest.codeScanning.listAlertsForRepo,
-//       {
-//         owner: login,
-//         repo: reponame
-//       }
-//     )
-//     if (alerts.length > 0) {
-//       for (const alert of alerts) {
-//         const rule: any = alert.rule
-//         let securitySeverity = ''
-//         let securityCwe = ''
-//         if (rule.security_severity_level) {
-//           securitySeverity = rule.security_severity_level
-//         } else {
-//           securitySeverity = rule.severity
-//         }
-//         for (const cwe of rule.tags) {
-//           if (cwe.includes('external/cwe/cwe')) {
-//             securityCwe = `${securityCwe}${cwe}, `
-//           }
-//         }
-//         securityCwe = securityCwe.replace(/,\s*$/, '')
-//         const _alert: any = alert
-//         const row: string[] = [
-//           login,
-//           reponame,
-//           alert.tool.name!,
-//           alert.tool.version!,
-//           alert.number.toString(),
-//           alert.html_url,
-//           alert.state,
-//           rule.id,
-//           securityCwe,
-//           securitySeverity,
-//           alert.most_recent_instance.location!.path,
-//           alert.most_recent_instance.location!.start_line,
-//           alert.most_recent_instance.location!.end_line,
-//           alert.created_at,
-//           _alert.updated_at,
-//           _alert.fixed_at,
-//           alert.dismissed_at,
-//           alert.dismissed_by
-//         ]
-//         org_issues.push(row)
-//       }
-//     }
-//   } catch (error) {
-//     error_flag = 'processing (code-scanning alerts) failed for'
-//     error_message = 'unknown error'
-//     if (error instanceof Error) {
-//       error_message = error.message
-//     }
-//     job_errors.push([
-//       'code-scanning-alerts',
-//       `${login}/${reponame}`,
-//       error_message
-//     ])
-//   } finally {
-//     console.log(`${error_flag} ${login}/${reponame}`)
-//   }
-// }
 
 async function getDependabotReport(
   login: string,
@@ -423,50 +318,37 @@ function getQuery(login: string, repoName: string, after: string): string {
   return query
 }
 
-async function getOrgSecretScanningAlerts(
+async function getSecretScanningReport(
   octokit: Octokit,
   login: string,
-  org_issues: string[][],
-  job_errors: string[][],
-  token: string
+  repoName: string,
+  csvData: string[][],
+  job_errors: string[][]
 ): Promise<void> {
   let error_flag = 'successfully processed (secret scanning) for'
   let error_message = ''
-  let page_no = 1
-  try {
-    const parse = require('parse-link-header')
-    let parsed
-    do {
-      const result = await octokit.request(
-        `GET /orgs/{org}/secret-scanning/alerts`,
-        {
-          headers: {
-            authorization: `token ${token}`
-          },
-          org: login,
-          visibility: 'all',
-          sort: 'created',
-          direction: 'desc',
-          per_page: 100,
-          page: page_no
-        }
-      )
-      page_no++
-      parsed = parse(result.headers.link)
 
-      for (const alert of result.data) {
-        const row: string[] = [
-          login,
-          alert.repository!.name,
-          alert.html_url!,
-          alert.secret_type!,
-          alert.secret!,
-          alert.state!,
-          alert.resolution!
-        ]
-        org_issues.push(row)
+  try {
+    const secretScanningAlerts = await octokit.paginate(
+      octokit.rest.secretScanning.listAlertsForRepo,
+      {
+        owner: login,
+        repo: repoName
       }
-    } while (parsed.next)
+    )
+
+    for (const alert of secretScanningAlerts) {
+      const row: string[] = [
+        login,
+        repoName,
+        alert.html_url!,
+        alert.secret_type!,
+        alert.secret!,
+        alert.state!,
+        alert.resolution!
+      ]
+      csvData.push(row)
+    }
   } catch (error) {
     error_flag = 'processing (secret scanning) failed for'
     error_message = 'unknown error'
@@ -475,57 +357,10 @@ async function getOrgSecretScanningAlerts(
     }
     job_errors.push([
       'secretscan-alerts',
-      `${login}/page: ${page_no}`,
+      `${login}/${repoName}`,
       error_message
     ])
   } finally {
-    console.log(`${error_flag} ${login}/page: ${page_no}`)
+    console.log(`${error_flag} ${login}/${repoName}`)
   }
 }
-
-// async function getSecretScanningReport(
-//   octokit: Octokit,
-//   login: string,
-//   repoName: string,
-//   csvData: string[][],
-//   job_errors: string[][]
-// ): Promise<void> {
-//   let error_flag = 'successfully processed (secret scanning) for'
-//   let error_message = ''
-
-//   try {
-//     const secretScanningAlerts = await octokit.paginate(
-//       octokit.rest.secretScanning.listAlertsForRepo,
-//       {
-//         owner: login,
-//         repo: repoName
-//       }
-//     )
-
-//     for (const alert of secretScanningAlerts) {
-//       const row: string[] = [
-//         login,
-//         repoName,
-//         alert.html_url!,
-//         alert.secret_type!,
-//         alert.secret!,
-//         alert.state!,
-//         alert.resolution!
-//       ]
-//       csvData.push(row)
-//     }
-//   } catch (error) {
-//     error_flag = 'processing (secret scanning) failed for'
-//     error_message = 'unknown error'
-//     if (error instanceof Error) {
-//       error_message = error.message
-//     }
-//     job_errors.push([
-//       'secretscan-alerts',
-//       `${login}/${repoName}`,
-//       error_message
-//     ])
-//   } finally {
-//     console.log(`${error_flag} ${login}/${repoName}`)
-//   }
-// }
