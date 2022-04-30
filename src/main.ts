@@ -40,7 +40,7 @@ async function run(): Promise<void> {
     const codescanningAlerts: string[][] = []
     const job_errors: string[][] = []
     job_errors.push(['error_type', 'repo', 'error_message'])
-    codescanningAlerts.push([
+    const codeScanningHeader: string[] = [
       'org',
       'repo',
       'tool_name',
@@ -59,7 +59,7 @@ async function run(): Promise<void> {
       'fixed_at',
       'dismissed_at',
       'dismissed_by'
-    ])
+    ]
 
     const dependabotAlerts: string[][] = []
     const dependabotHeader: string[] = [
@@ -73,7 +73,20 @@ async function run(): Promise<void> {
       'description'
     ]
 
+    const secretScanningAlerts: string[][] = []
+    const secretScanningheader: string[] = [
+      'org',
+      'repo',
+      'html_url',
+      'secret_type',
+      'secret',
+      'state',
+      'resolution'
+    ]
+
+    secretScanningAlerts.push(secretScanningheader)
     dependabotAlerts.push(dependabotHeader)
+    codescanningAlerts.push(codeScanningHeader)
 
     console.log(`${dsp_org} has ${repocount} repos`)
     for (const repo of repos) {
@@ -98,16 +111,28 @@ async function run(): Promise<void> {
           token
         )
       )
+
+      promises.push(
+        await getSecretScanningReport(
+          octokit,
+          login,
+          reponame,
+          secretScanningAlerts,
+          job_errors
+        )
+      )
     }
 
     await Promise.allSettled(promises)
     const wb = xlsx.utils.book_new()
     const ws = xlsx.utils.aoa_to_sheet(codescanningAlerts)
     const ws1 = xlsx.utils.aoa_to_sheet(dependabotAlerts)
-    const ws2 = xlsx.utils.aoa_to_sheet(job_errors)
+    const ws2 = xlsx.utils.aoa_to_sheet(secretScanningAlerts)
+    const ws3 = xlsx.utils.aoa_to_sheet(job_errors)
     xlsx.utils.book_append_sheet(wb, ws, 'code-scanning-alerts')
     xlsx.utils.book_append_sheet(wb, ws1, 'dependabot-alerts')
-    xlsx.utils.book_append_sheet(wb, ws2, 'errors')
+    xlsx.utils.book_append_sheet(wb, ws2, 'secret-scanning-alerts')
+    xlsx.utils.book_append_sheet(wb, ws3, 'errors')
     xlsx.writeFile(wb, `${dsp_org}-security-alerts.xlsx`)
   } catch (error) {
     console.error(error)
@@ -123,7 +148,7 @@ async function getRepoAlerts(
   org_issues: string[][],
   job_errors: string[][]
 ): Promise<void> {
-  let error_flag = 'successfully processed'
+  let error_flag = 'successfully processed (code-scanning alerts) for'
   let error_message = ''
   try {
     const alerts = await octokit.paginate(
@@ -174,7 +199,7 @@ async function getRepoAlerts(
       }
     }
   } catch (error) {
-    error_flag = 'processing Failed for'
+    error_flag = 'processing (code-scanning alerts) failed for'
     error_message = 'unknown error'
     if (error instanceof Error) {
       error_message = error.message
@@ -196,7 +221,7 @@ async function getDependabotReport(
   job_errors: string[][],
   token: string
 ): Promise<void> {
-  let error_flag = 'successfully processed'
+  let error_flag = 'successfully processed (dependabot alerts) for'
   let error_message = ''
   try {
     //get the dependency graph for the repo and parse the data
@@ -226,7 +251,7 @@ async function getDependabotReport(
       }
     } while (response.repository.vulnerabilityAlerts.pageInfo.hasNextPage)
   } catch (error) {
-    error_flag = 'processing Failed for'
+    error_flag = 'processing (dependabot alerts) failed for'
     error_message = 'unknown error'
     if (error instanceof Error) {
       error_message = error.message
@@ -291,4 +316,51 @@ function getQuery(login: string, repoName: string, after: string): string {
       }
     `
   return query
+}
+
+async function getSecretScanningReport(
+  octokit: Octokit,
+  login: string,
+  repoName: string,
+  csvData: string[][],
+  job_errors: string[][]
+): Promise<void> {
+  let error_flag = 'successfully processed (secret scanning) for'
+  let error_message = ''
+
+  try {
+    const secretScanningAlerts = await octokit.paginate(
+      octokit.rest.secretScanning.listAlertsForRepo,
+      {
+        owner: login,
+        repo: repoName
+      }
+    )
+
+    for (const alert of secretScanningAlerts) {
+      const row: string[] = [
+        login,
+        repoName,
+        alert.html_url!,
+        alert.secret_type!,
+        alert.secret!,
+        alert.state!,
+        alert.resolution!
+      ]
+      csvData.push(row)
+    }
+  } catch (error) {
+    error_flag = 'processing (secret scanning) failed for'
+    error_message = 'unknown error'
+    if (error instanceof Error) {
+      error_message = error.message
+    }
+    job_errors.push([
+      'secretscan-alerts',
+      `${login}/${repoName}`,
+      error_message
+    ])
+  } finally {
+    console.log(`${error_flag} ${login}/${repoName}`)
+  }
 }
