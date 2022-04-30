@@ -11,9 +11,9 @@ This code is able to
 
 To-dos:
 * Need to run in a more reasonable time (5-10 mins).
- * It take about 30-40 mins / 1000 repo org.
+  * It take about 30-40 mins / 1000 repo org.
 * Implement multi-threading to improve performance.
- * Ability to specify multiple tokens for the thread-pool to work around GH rate-limits.
+  * Ability to specify multiple tokens for the thread-pool to work around GH rate-limits.
 * Implement an API cache for reruns (for when API rate limit is hit).
 
 Usage: 
