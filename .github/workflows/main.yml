@@ -33,5 +33,5 @@ jobs:
 
       - uses: actions/upload-artifact@v3.0.0
         with:
-          name: $GITHUB_ORG
+          name: ${{env.GITHUB_ORG}}
           path: ./**/*.xlsx  
