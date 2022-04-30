@@ -1,6 +1,6 @@
 # This is a basic workflow to help you get started with Actions
 
-name: Test
+name: Generate Org-level Report
 
 # Controls when the workflow will run
 on:
@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  INPUT_TOKEN: ${{ secrets.TOKEN }}
-  GITHUB_ORG: dsp-testing
+  INPUT_TOKEN: ${{ secrets.TOKEN }} # provide PAT here
+  GITHUB_ORG: dsp-testing # provide org-name here
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -22,6 +22,8 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
+        with:
+          repository : amitgupta7/node-async
 
       # Runs a single command using the runners shell
       - name: build and run script
