@@ -98,6 +98,16 @@ async function run(): Promise<void> {
       )
     )
 
+    promises.push(
+      await getOrgSecretScanningAlerts(
+        octokit,
+        dsp_org,
+        secretScanningAlerts,
+        job_errors,
+        token
+      )
+    )
+
     console.log(`${dsp_org} has ${repocount} repos`)
     for (const repo of repos) {
       //console.log(`${repo.full_name}`)
@@ -122,15 +132,15 @@ async function run(): Promise<void> {
         )
       )
 
-      promises.push(
-        await getSecretScanningReport(
-          octokit,
-          login,
-          reponame,
-          secretScanningAlerts,
-          job_errors
-        )
-      )
+      // promises.push(
+      //   await getSecretScanningReport(
+      //     octokit,
+      //     login,
+      //     reponame,
+      //     secretScanningAlerts,
+      //     job_errors
+      //   )
+      // )
     }
 
     await Promise.allSettled(promises)
@@ -413,37 +423,50 @@ function getQuery(login: string, repoName: string, after: string): string {
   return query
 }
 
-async function getSecretScanningReport(
+async function getOrgSecretScanningAlerts(
   octokit: Octokit,
   login: string,
-  repoName: string,
-  csvData: string[][],
-  job_errors: string[][]
+  org_issues: string[][],
+  job_errors: string[][],
+  token: string
 ): Promise<void> {
   let error_flag = 'successfully processed (secret scanning) for'
   let error_message = ''
-
+  let page_no = 1
   try {
-    const secretScanningAlerts = await octokit.paginate(
-      octokit.rest.secretScanning.listAlertsForRepo,
-      {
-        owner: login,
-        repo: repoName
-      }
-    )
+    const parse = require('parse-link-header')
+    let parsed
+    do {
+      const result = await octokit.request(
+        `GET /orgs/{org}/secret-scanning/alerts`,
+        {
+          headers: {
+            authorization: `token ${token}`
+          },
+          org: login,
+          visibility: 'all',
+          sort: 'created',
+          direction: 'desc',
+          per_page: 100,
+          page: page_no
+        }
+      )
+      page_no++
+      parsed = parse(result.headers.link)
 
-    for (const alert of secretScanningAlerts) {
-      const row: string[] = [
-        login,
-        repoName,
-        alert.html_url!,
-        alert.secret_type!,
-        alert.secret!,
-        alert.state!,
-        alert.resolution!
-      ]
-      csvData.push(row)
-    }
+      for (const alert of result.data) {
+        const row: string[] = [
+          login,
+          alert.repository!.name,
+          alert.html_url!,
+          alert.secret_type!,
+          alert.secret!,
+          alert.state!,
+          alert.resolution!
+        ]
+        org_issues.push(row)
+      }
+    } while (parsed.next)
   } catch (error) {
     error_flag = 'processing (secret scanning) failed for'
     error_message = 'unknown error'
@@ -452,10 +475,57 @@ async function getSecretScanningReport(
     }
     job_errors.push([
       'secretscan-alerts',
-      `${login}/${repoName}`,
+      `${login}/page: ${page_no}`,
       error_message
     ])
   } finally {
-    console.log(`${error_flag} ${login}/${repoName}`)
+    console.log(`${error_flag} ${login}/page: ${page_no}`)
   }
 }
+
+// async function getSecretScanningReport(
+//   octokit: Octokit,
+//   login: string,
+//   repoName: string,
+//   csvData: string[][],
+//   job_errors: string[][]
+// ): Promise<void> {
+//   let error_flag = 'successfully processed (secret scanning) for'
+//   let error_message = ''
+
+//   try {
+//     const secretScanningAlerts = await octokit.paginate(
+//       octokit.rest.secretScanning.listAlertsForRepo,
+//       {
+//         owner: login,
+//         repo: repoName
+//       }
+//     )
+
+//     for (const alert of secretScanningAlerts) {
+//       const row: string[] = [
+//         login,
+//         repoName,
+//         alert.html_url!,
+//         alert.secret_type!,
+//         alert.secret!,
+//         alert.state!,
+//         alert.resolution!
+//       ]
+//       csvData.push(row)
+//     }
+//   } catch (error) {
+//     error_flag = 'processing (secret scanning) failed for'
+//     error_message = 'unknown error'
+//     if (error instanceof Error) {
+//       error_message = error.message
+//     }
+//     job_errors.push([
+//       'secretscan-alerts',
+//       `${login}/${repoName}`,
+//       error_message
+//     ])
+//   } finally {
+//     console.log(`${error_flag} ${login}/${repoName}`)
+//   }
+// }
