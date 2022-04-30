@@ -10,7 +10,7 @@ This code is able to
 * Capture all error logs in an excel worksheet.
 
 Usage: 
-* copy and paste [this](https://github.com/amitgupta7/node-async/blob/master/.github/workflows/run-test.yml) workflow in your repo
+* copy and paste [this](https://github.com/amitgupta7/node-async/blob/master/.github/workflows/run-test.yml) in your actions workflow.
 * Set appropreate PAT and ORG value in the `env` section of the workflow.
 * run the workflow (and wait for about 30 - 40 mins) 
 
