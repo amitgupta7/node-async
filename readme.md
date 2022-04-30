@@ -6,7 +6,8 @@ This code is able to
 * Consider API Pagination limits.
 * Is bottleneck by API rate limit of 5000 calls/hr/user. 
   * Rate limit and other errors are captured in the excel file.
-* Make multiple parallel asynchronous calls. Is not multi-threaded. 
+* Make multiple parallel asynchronous calls (using [async-await pattern](https://en.wikipedia.org/wiki/Async/await)). 
+  * Is not multi-threaded. 
 * Capture all error logs in an excel worksheet.
 
 To-dos:
