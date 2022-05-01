@@ -10,6 +10,7 @@ on:
 env:
   INPUT_TOKEN: ${{ secrets.TOKEN }} # provide PAT here
   GITHUB_ORG: octodemo # provide org-name here
+  USE_ORG_API: true
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
