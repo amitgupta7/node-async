@@ -470,6 +470,7 @@ async function getOrgCSAlerts(
   let error_flag = 'successfully processed (code-scanning alerts) for'
   let error_message = ''
   let page_no = 1
+  let next = null
   try {
     const parse = require('parse-link-header')
     let parsed
@@ -490,6 +491,11 @@ async function getOrgCSAlerts(
       )
       page_no++
       parsed = parse(result.headers.link)
+      if (parsed) {
+        next = parsed.next
+      } else {
+        next = null
+      }
 
       for (const alert of result.data) {
         const rule: any = alert.rule
@@ -528,7 +534,7 @@ async function getOrgCSAlerts(
           alert.dismissed_by
         ])
       }
-    } while (parsed.next)
+    } while (next)
   } catch (error) {
     error_flag = 'processing (code-scanning alerts) failed for'
     error_message = 'unknown error'
@@ -541,6 +547,6 @@ async function getOrgCSAlerts(
       error_message
     ])
   } finally {
-    console.log(`${error_flag} ${login}/${page_no}`)
+    console.log(`${error_flag} ${login}/page:${page_no}`)
   }
 }
